@@ -49,6 +49,23 @@ if [ "$answer" != "${answer#[Nn]}" ] ;then
 fi
 
 # Delete ELB
+echo "Process of Classic ELBs ..."
+all_elbsv1=$(aws elb describe-load-balancers \
+        --query 'LoadBalancerDescriptions[*].{Name:LoadBalancerName,VPCID:VPCId}' \
+        --region "${AWS_REGION}" \
+        --output text \
+        | grep "${VPC_ID}" \
+        | xargs -n1 | sed -n 'p;n')
+
+for elb in ${all_elbsv1}; do
+    echo "    delete elb of ${elb}"
+    aws elb delete-load-balancer \
+        --load-balancer-name "${elb}" \
+        --region "${AWS_REGION}" \
+        --output text
+done
+
+# Delete ELB
 echo "Process of ELB ..."
 all_elbs=$(aws elbv2 describe-load-balancers \
         --query 'LoadBalancers[*].{ARN:LoadBalancerArn,VPCID:VpcId}' \
@@ -88,7 +105,7 @@ all_target_groups=$(aws elbv2 describe-target-groups \
     | grep "${VPC_ID}" \
     | xargs -n1 | sed -n 'p;n')
 
-for tg in ${all_target_groups}; do
+for tg in ${all_target_groups} ; do
     echo "    delete target group of ${tg}"
     aws elbv2 delete-target-group \
         --target-group-arn "${tg}" \
