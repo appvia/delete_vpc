@@ -4,30 +4,44 @@
 #e-mail      : feilianghong@gmail.com
 #create date : May 23, 2020
 #modify date : Aug 22, 2021
-set -e
+${TRACE:+set -x}
 
 if ! command -v aws &>/dev/null; then
     echo "awscli is not installed. Please install it and re-run this script."
     exit 1
 fi
 
-if [ -z "$1" ]; then
-    echo "Usage   : $0 <aws region> <vpc id>"
-    echo "Example : $0 us-east-1 vpc-xxxxxxxxxx"
-    echo ""
-    exit 1
-fi
+usage() {
+    echo "$0 --vpcid [id] [--region] [--no-prompt]"
+    exit 0
+}
 
-if [ -z "$2" ]; then
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --region)
+      AWS_REGION=${2}
+      shift 2
+      ;;
+    --vpcid)
+      VPC_ID=${2}
+      shift 2
+      ;;
+    --no-prompt)
+      NOPROMPT=true
+      shift 1
+      ;;
+    -h | --help) usage ;;
+    *) shift 1 ;;
+  esac
+done
+
+if [ -z "${VPC_ID}" ]; then
     # List all VPCs in specific Region
     aws ec2 describe-vpcs \
         --query 'Vpcs[].{vpcid:VpcId,name:Tags[?Key==`Name`].Value[]}' \
-        --region $1 \
+        --region ${AWS_REGION} \
         --output table
     exit 1
-else
-    AWS_REGION=$1
-    VPC_ID=$2
 fi
 
 # Check VPC state, available or not
@@ -35,18 +49,57 @@ state=$(aws ec2 describe-vpcs \
     --vpc-ids "${VPC_ID}" \
     --query 'Vpcs[].State' \
     --region "${AWS_REGION}" \
-    --output text)
+    --output text 2>/dev/null )
 
-if [ ${state} != 'available' ]; then
+if [[ "${state}" != "available" ]]; then
     echo "The VPC of ${VPC_ID} is NOT available now!"
     exit 1
 fi
 
-echo -n "*** Are you sure to delete the VPC of ${VPC_ID} in ${AWS_REGION} (y/n)? "
-read answer
-if [ "$answer" != "${answer#[Nn]}" ] ;then
-    exit 1
+if [ "${NOPROMPT}" == true ]; then
+    echo "*** deleting the VPC of ${VPC_ID} in ${AWS_REGION}"
+else
+    echo -n "*** Are you sure to delete the VPC of ${VPC_ID} in ${AWS_REGION} (y/n)? "
+    read answer
+    if [ "$answer" != "${answer#[Nn]}" ] ;then
+        exit 1
+    fi
 fi
+
+# Delete EKS
+echo "Processing EKS's"
+all_eks=$(aws eks list-clusters | jq -r .clusters[])
+for eks in ${all_eks}; do
+    echo "deleting cluster ${eks}"
+    nodegroups=$(aws eks list-nodegroups \
+        --cluster-name ${eks} \
+        --region "${AWS_REGION}" | jq -r '.nodegroups[]' )
+    for ng in ${nodegroups}; do
+        echo "deleting node group ${ng} for "
+        aws eks delete-nodegroup  \
+                    --cluster-name ${eks} \
+                    --nodegroup-name ${ng}
+        while :
+        do
+            if ! aws eks list-nodegroups --cluster-name ${eks} | \
+               jq -r .[] | grep ${ng} ; then
+                break
+            fi
+            sleep 3
+        done
+    done
+    aws eks delete-cluster \
+        --name ${eks} &>/dev/null
+    echo "waiting for cluster delete for ${eks}"
+    while :
+    do
+        if ! aws eks list-clusters ${eks} | \
+            jq -r .clusters[] | grep ${eks} ; then
+            break
+        fi
+        sleep 3
+    done
+done
 
 # Delete ELB
 echo "Process of Classic ELBs ..."
