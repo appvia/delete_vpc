@@ -78,11 +78,11 @@ for eks in ${all_eks}; do
         echo "deleting node group ${ng} for "
         aws eks delete-nodegroup  \
                     --cluster-name ${eks} \
-                    --nodegroup-name ${ng}
+                    --nodegroup-name ${ng} >/dev/null
         while :
         do
             if ! aws eks list-nodegroups --cluster-name ${eks} | \
-               jq -r .[] | grep ${ng} ; then
+               jq -r .[] | grep ${ng} >/dev/null ; then
                 break
             fi
             sleep 3
@@ -93,8 +93,8 @@ for eks in ${all_eks}; do
     echo "waiting for cluster delete for ${eks}"
     while :
     do
-        if ! aws eks list-clusters ${eks} | \
-            jq -r .clusters[] | grep ${eks} ; then
+        if ! aws eks list-clusters | \
+            jq -r .clusters[] | grep ${eks} >/dev/null ; then
             break
         fi
         sleep 3
