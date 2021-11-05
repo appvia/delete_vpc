@@ -43,10 +43,28 @@ while [[ $# -gt 0 ]]; do
       PPN=${2}
       shift 2
       ;;
+    --account-name)
+      ACCOUNT_NAME=${2}
+      shift 2
+      ;;
     -h | --help) usage ;;
     *) shift 1 ;;
   esac
 done
+
+if [ ! -z ${ACCOUNT_NAME} ]; then
+    PPN="catalog-for-${ACCOUNT_NAME}"
+    echo "checking for provisioned product name ${PPN}"
+    if ! status ${PPN} &>/dev/null ; then
+        echo "cannot find product"
+        exit 1
+    fi
+fi
+
+if [ -z ${PPN} ]; then
+    echo "invalid product name"
+    exit 1
+fi
 
 echo "attempting delete of provisioned product name ${PPN}"
 while :
