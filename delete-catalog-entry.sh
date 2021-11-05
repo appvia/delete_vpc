@@ -4,10 +4,12 @@ set -eo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/. >/dev/null 2>&1 && pwd)"
 
-if ! command -v aws &>/dev/null; then
-    echo "awscli is not installed. Please install it and re-run this script."
-    exit 1
-fi
+log() { (echo 2>/dev/null -e "$@"); }
+info() { log "[info]  $@"; }
+error() {
+  log "[error] $@"
+  exit 1
+}
 
 usage() {
     echo "$0 --product-name catalog-for-someaccount [--region [region]]"
@@ -37,6 +39,10 @@ statusDetail() {
     return $?
 }
 
+if ! command -v aws &>/dev/null; then
+    error "awscli is not installed. Please install it and re-run this script."
+fi
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --product-name)
@@ -54,40 +60,39 @@ done
 
 if [ ! -z ${ACCOUNT_NAME} ]; then
     PPN="catalog-for-${ACCOUNT_NAME}"
-    echo "checking for provisioned product name ${PPN}"
+    log "checking for provisioned product name ${PPN}"
     if ! status ${PPN} &>/dev/null ; then
-        echo "cannot find product"
-        exit 1
+        error "cannot find product"
     fi
 fi
 
 if [ -z ${PPN} ]; then
-    echo "invalid product name"
-    exit 1
+    error "invalid product name"
 fi
 
-echo "attempting delete of provisioned product name ${PPN}"
+info "attempting delete of provisioned product name ${PPN}"
 while :
 do
     if ! STATUS=$(status ${PPN}) ; then
-        echo "unable to get status - probs allready deleted"
-        exit 1
+        error "unable to get status - probs allready deleted"
     fi
     case "${STATUS}" in
     TAINTED)
         detail=$(statusDetail ${PPN})
+        if echo "${detail}" | grep "ResourceNotFoundException" ; then
+            info "${PPN} - account already closed"
+            exit 0
+        fi
         if echo ${detail} | grep "unable to assume the AWSControlTowerExecution role in the account" ; then
-            echo "unable to access account as already probs closed?"
-            exit 1
+            error "${PPN} - unable to access account as already probs closed?"
         fi
         if [[ "${detail}" == "Unable to terminate provisioned product. The corresponding Control Tower account is suspended." ]]; then
-            echo "account already closed"
-            exit 1
+            error "${PPN} - account already closed, suspended"
         fi
-        echo "retrying - as status message is ${detail}"
+        info "${PPN} - retrying - as status message is ${detail}"
         terminate ${PPN}
         ;;
-    CREATED)
+    CREATED|AVAILABLE)
         # terminate or try again
         terminate ${PPN}
         ;;
@@ -95,7 +100,7 @@ do
         # wait
         ;;
     *)
-        echo "status is ${STATUS}... trying again - may need to check me"
+        info "${PPN} - unknonw status is ${STATUS}... trying again - may need to check me"
         ;;
     esac
     sleep 3
