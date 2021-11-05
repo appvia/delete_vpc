@@ -67,6 +67,7 @@ do
             exit 1
         fi
         echo "retrying - as status message is ${detail}"
+        terminate ${PPN}
         ;;
     CREATED)
         # terminate or try again
