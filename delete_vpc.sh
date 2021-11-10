@@ -83,11 +83,11 @@ for eks in ${all_eks}; do
     for ng in ${nodegroups}; do
         echo "deleting node group ${ng} for "
         aws eks delete-nodegroup  \
-                    --cluster-name ${eks} \
-                    --nodegroup-name ${ng} >/dev/null
+                    --cluster-name "${eks}" \
+                    --nodegroup-name "${ng}" >/dev/null
         while :
         do
-            if ! aws eks list-nodegroups --cluster-name ${eks} | \
+            if ! aws eks list-nodegroups --cluster-name "${eks}" | \
                jq -r .[] | grep ${ng} >/dev/null ; then
                 break
             fi
@@ -95,7 +95,7 @@ for eks in ${all_eks}; do
         done
     done
     aws eks delete-cluster \
-        --name ${eks} &>/dev/null
+        --name "${eks}" &>/dev/null
     echo "waiting for cluster delete for ${eks}"
     while :
     do
@@ -162,7 +162,7 @@ all_target_groups=$(aws elbv2 describe-target-groups \
     --region "${AWS_REGION}" \
     --output text \
     | grep "${VPC_ID}" \
-    | xargs -n1 | sed -n 'p;n')
+    | xargs -n1 | sed -n 'p;n' )
 
 for tg in ${all_target_groups} ; do
     echo "    delete target group of ${tg}"
