@@ -70,7 +70,13 @@ fi
 echo "Processing EKS's"
 all_eks=$(aws eks list-clusters | jq -r .clusters[])
 for eks in ${all_eks}; do
+    clustervpc=$(aws eks describe-cluster --name ${eks} --region "${AWS_REGION}" | jq -r .cluster.resourcesVpcConfig.vpcId )
+    if [[ "${clustervpc}" != "${VPC_ID}" ]]; then
+        continue
+    fi
+
     echo "deleting cluster ${eks}"
+
     nodegroups=$(aws eks list-nodegroups \
         --cluster-name ${eks} \
         --region "${AWS_REGION}" | jq -r '.nodegroups[]' )
